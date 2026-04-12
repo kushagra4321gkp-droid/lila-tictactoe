@@ -62,20 +62,28 @@ export async function cancelMatchmaker(socket: Socket, ticket: string): Promise<
 
 export async function rpcCreateMatch(session: Session, mode: "classic" | "timed"): Promise<string> {
   const res = await nakamaClient.rpc(session, "create_match", JSON.stringify({ mode }));
-  return (res.payload ?? {}).matchId as string;
+  const d1 = typeof res.payload === 'string' ? JSON.parse(res.payload) : (res.payload ?? {});
+  return d1.matchId as string;
 }
 
 export async function rpcListMatches(session: Session, mode?: "classic" | "timed"): Promise<any[]> {
-  const res = await nakamaClient.rpc(session, "list_matches", JSON.stringify(mode ? { mode } : {}));
-  return (res.payload ?? {}).matches ?? [];
+  // Use SDK's built-in listMatches — no RPC needed, works more reliably
+  const result = await nakamaClient.listMatches(session, 20, true, undefined, 0, 1);
+  const matches = result.matches ?? [];
+  if (!mode) return matches;
+  return matches.filter((m: any) => {
+    try { return JSON.parse(m.label || "{}").mode === mode; } catch { return true; }
+  });
 }
 
 export async function rpcGetLeaderboard(session: Session): Promise<any[]> {
   const res = await nakamaClient.rpc(session, "get_leaderboard", "{}");
-  return (res.payload ?? {}).records ?? [];
+  const d3 = typeof res.payload === 'string' ? JSON.parse(res.payload) : (res.payload ?? {});
+  return d3.records ?? [];
 }
 
 export async function rpcGetMyStats(session: Session): Promise<any> {
   const res = await nakamaClient.rpc(session, "get_my_stats", "{}");
-  return (res.payload ?? {}).stats;
+  const d4 = typeof res.payload === 'string' ? JSON.parse(res.payload) : (res.payload ?? {});
+  return d4.stats;
 }

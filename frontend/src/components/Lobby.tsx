@@ -6,7 +6,7 @@ import { GameMode } from "../types";
 interface Props {
   session:         Session;
   username:        string;
-  onFindMatch:     (mode: GameMode) => void;
+  onFindMatch: (mode: GameMode) => void | Promise<void>;
   onJoinMatch:     (matchId: string) => void;
   onLeaderboard:   () => void;
   onLogout:        () => void;

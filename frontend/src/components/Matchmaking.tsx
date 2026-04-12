@@ -1,90 +1,63 @@
 import { useState, useEffect, useRef } from "react";
 import { Session, Socket } from "@heroiclabs/nakama-js";
-import { createSocket, joinMatchmaker, cancelMatchmaker } from "../nakamaClient";
+import { rpcCreateMatch, rpcListMatches } from "../nakamaClient";
 import { GameMode } from "../types";
 
 interface Props {
-  session:    Session;
-  mode:       GameMode;
-  onMatched:  (matchId: string, socket: Socket) => void;
-  onCancel:   () => void;
+  session:   Session;
+  mode:      GameMode;
+  onMatched: (matchId: string, socket: Socket | null) => void;
+  onCancel:  () => void;
 }
 
 export default function Matchmaking({ session, mode, onMatched, onCancel }: Props) {
-  const [status,   setStatus]   = useState("Connecting…");
-  const [elapsed,  setElapsed]  = useState(0);
-  const [error,    setError]    = useState<string | null>(null);
-
-  const socketRef  = useRef<Socket | null>(null);
-  const ticketRef  = useRef<string | null>(null);
-  const timerRef   = useRef<ReturnType<typeof setInterval> | null>(null);
+  const [status,  setStatus]  = useState("Creating room...");
+  const [elapsed, setElapsed] = useState(0);
+  const [error,   setError]   = useState<string | null>(null);
+  const matchIdRef = useRef<string | null>(null);
   const mountedRef = useRef(true);
+  const pollRef    = useRef<ReturnType<typeof setInterval> | null>(null);
+  const timerRef   = useRef<ReturnType<typeof setInterval> | null>(null);
 
   useEffect(() => {
     mountedRef.current = true;
-
     const start = async () => {
       try {
-        const socket = createSocket();
-        socketRef.current = socket;
-
-        await socket.connect(session, false);
-
-        // When matchmaker pairs us, we get an event with the match token
-        socket.onmatchmakermatched = async (matched) => {
-          if (!mountedRef.current) return;
-          setStatus("Match found! Joining…");
-
+        const matchId = await rpcCreateMatch(session, mode);
+        matchIdRef.current = matchId;
+        if (!mountedRef.current) return;
+        setStatus("Waiting for opponent...");
+        timerRef.current = setInterval(() => setElapsed(s => s + 1), 1000);
+        pollRef.current = setInterval(async () => {
           try {
-            // Join the match the server created for us
-            await socket.joinMatch(matched.match_id ?? "", matched.token);
-            if (mountedRef.current) {
-              onMatched(matched.match_id ?? "", socket);
+            const matches = await rpcListMatches(session);
+            const found = matches.find((m: any) => {
+              const id = m.match_id ?? m.matchId ?? "";
+              return id === matchId;
+            });
+            if (found && (found.size ?? 0) >= 2 && mountedRef.current) {
+              clearInterval(pollRef.current!);
+              clearInterval(timerRef.current!);
+              onMatched(matchId, null);
             }
-          } catch (e: any) {
-            if (mountedRef.current) setError(e?.message ?? "Failed to join matched game.");
-          }
-        };
-
-        socket.ondisconnect = () => {
-          if (mountedRef.current) setError("Disconnected. Please try again.");
-        };
-
-        // Add to matchmaker queue
-        const ticket = await joinMatchmaker(socket, mode);
-        ticketRef.current = ticket;
-
-        if (mountedRef.current) setStatus("Finding a random player…");
-
-        // Elapsed-time counter
-        timerRef.current = setInterval(() => {
-          setElapsed(s => s + 1);
-        }, 1000);
-
+          } catch { }
+        }, 2000);
       } catch (e: any) {
-        if (mountedRef.current) setError(e?.message ?? "Matchmaking failed.");
+        if (mountedRef.current) setError(e?.message ?? "Failed to create room.");
       }
     };
-
     start();
-
     return () => {
       mountedRef.current = false;
+      if (pollRef.current)  clearInterval(pollRef.current);
       if (timerRef.current) clearInterval(timerRef.current);
-      // Cancel matchmaker ticket on unmount
-      if (socketRef.current && ticketRef.current) {
-        cancelMatchmaker(socketRef.current, ticketRef.current).catch(() => {});
-      }
     };
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  const handleCancel = async () => {
+  const handleCancel = () => {
+    if (pollRef.current)  clearInterval(pollRef.current);
     if (timerRef.current) clearInterval(timerRef.current);
-    if (socketRef.current && ticketRef.current) {
-      await cancelMatchmaker(socketRef.current, ticketRef.current).catch(() => {});
-      socketRef.current.disconnect(false);
-    }
     onCancel();
   };
 
@@ -94,23 +67,19 @@ export default function Matchmaking({ session, mode, onMatched, onCancel }: Prop
         {error ? (
           <>
             <p style={{ color: "var(--danger)", marginBottom: "1rem" }}>{error}</p>
-            <button className="btn btn-outline" onClick={onCancel}>← Back to Lobby</button>
+            <button className="btn btn-outline" onClick={onCancel}>Back to Lobby</button>
           </>
         ) : (
           <>
             <div className="spinner" />
             <p style={{ fontWeight: 600, marginBottom: "0.25rem" }}>{status}</p>
             <p className="muted" style={{ fontSize: "0.85rem", marginBottom: "1.25rem" }}>
-              {elapsed > 0 ? `${elapsed}s elapsed…` : "It usually takes about 20 seconds."}
+              {elapsed > 0 ? `${elapsed}s elapsed...` : "Your room is visible in Open Rooms."}
             </p>
-            <div style={{ marginBottom: "1rem" }}>
-              <span className={`mode-badge ${mode}`}>
-                {mode === "timed" ? "⏱ Timed Mode" : "Classic Mode"}
-              </span>
-            </div>
-            <button className="btn btn-outline" onClick={handleCancel}>
-              Cancel
-            </button>
+            <span className={`mode-badge ${mode}`} style={{ display: "inline-block", marginBottom: "1rem" }}>
+              {mode === "timed" ? "Timed Mode" : "Classic Mode"}
+            </span>
+            <button className="btn btn-outline" onClick={handleCancel}>Cancel</button>
           </>
         )}
       </div>
