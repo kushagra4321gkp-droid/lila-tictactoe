@@ -5,70 +5,54 @@ const NAKAMA_PORT       = import.meta.env.VITE_NAKAMA_PORT       ?? "7350";
 const NAKAMA_SSL        = import.meta.env.VITE_NAKAMA_SSL        === "true";
 const NAKAMA_SERVER_KEY = import.meta.env.VITE_NAKAMA_SERVER_KEY ?? "defaultkey";
 
-// Singleton client
-export const nakamaClient = new Client(
-  NAKAMA_SERVER_KEY,
-  NAKAMA_HOST,
-  NAKAMA_PORT,
-  NAKAMA_SSL
-);
+export const nakamaClient = new Client(NAKAMA_SERVER_KEY, NAKAMA_HOST, NAKAMA_PORT, NAKAMA_SSL);
 
-// ── Auth ──────────────────────────────────────────────────────────────────────
+function randomId(): string {
+  return `dev_${Math.random().toString(36).slice(2)}${Date.now()}`;
+}
 
-/** Authenticate (or create) a device account and persist the session. */
 export async function authenticateDevice(username: string): Promise<Session> {
-  // Use a stable device ID based on username + a random suffix stored in localStorage
-  let deviceId = localStorage.getItem("deviceId");
+  let deviceId = "";
+  try { deviceId = localStorage.getItem("deviceId") || ""; } catch { }
   if (!deviceId) {
-    deviceId = `device_${Math.random().toString(36).slice(2)}`;
-    localStorage.setItem("deviceId", deviceId);
+    deviceId = randomId();
+    try { localStorage.setItem("deviceId", deviceId); } catch { }
   }
 
-  const session = await nakamaClient.authenticateDevice(deviceId, true, username);
+  const session = await nakamaClient.authenticateDevice(deviceId, true);
 
-  // Update display name
-  await nakamaClient.updateAccount(session, { username, displayName: username });
+  try {
+    await nakamaClient.updateAccount(session, { username, displayName: username });
+  } catch {
+    try {
+      const fallback = `${username}${Math.random().toString(36).slice(2, 5)}`;
+      await nakamaClient.updateAccount(session, { username: fallback, displayName: username });
+    } catch { }
+  }
 
-  // Persist
-  localStorage.setItem("nakamaSession", JSON.stringify(session));
-
+  try { localStorage.setItem("nakamaSession", JSON.stringify(session)); } catch { }
   return session;
 }
 
-/** Restore a persisted session (may be expired). */
 export function restoreSession(): Session | null {
-  const raw = localStorage.getItem("nakamaSession");
-  if (!raw) return null;
   try {
+    const raw = localStorage.getItem("nakamaSession");
+    if (!raw) return null;
     const obj = JSON.parse(raw);
     return Session.restore(obj.token, obj.refresh_token);
-  } catch {
-    return null;
-  }
+  } catch { return null; }
 }
 
 export function clearSession(): void {
-  localStorage.removeItem("nakamaSession");
+  try { localStorage.removeItem("nakamaSession"); } catch { }
 }
-
-// ── Socket ────────────────────────────────────────────────────────────────────
 
 export function createSocket(): Socket {
   return nakamaClient.createSocket(NAKAMA_SSL);
 }
 
-// ── Matchmaking ───────────────────────────────────────────────────────────────
-
-export async function joinMatchmaker(
-  socket: Socket,
-  mode: "classic" | "timed"
-): Promise<string> {
-  const ticket = await socket.addMatchmaker(
-    "*",              // query (any)
-    2,                // minCount
-    2,                // maxCount
-    { mode }          // string properties (sent to matchmakerMatched hook)
-  );
+export async function joinMatchmaker(socket: Socket, mode: "classic" | "timed"): Promise<string> {
+  const ticket = await socket.addMatchmaker("*", 2, 2, { mode });
   return ticket.ticket;
 }
 
@@ -76,38 +60,22 @@ export async function cancelMatchmaker(socket: Socket, ticket: string): Promise<
   await socket.removeMatchmaker(ticket);
 }
 
-// ── RPC helpers ───────────────────────────────────────────────────────────────
-
-export async function rpcCreateMatch(
-  session: Session,
-  mode: "classic" | "timed"
-): Promise<string> {
+export async function rpcCreateMatch(session: Session, mode: "classic" | "timed"): Promise<string> {
   const res = await nakamaClient.rpcFunc(session, "create_match", JSON.stringify({ mode }));
-  const body = JSON.parse(res.payload ?? "{}");
-  return body.matchId as string;
+  return (JSON.parse(res.payload ?? "{}")).matchId as string;
 }
 
-export async function rpcListMatches(
-  session: Session,
-  mode?: "classic" | "timed"
-): Promise<any[]> {
-  const res = await nakamaClient.rpcFunc(
-    session,
-    "list_matches",
-    JSON.stringify(mode ? { mode } : {})
-  );
-  const body = JSON.parse(res.payload ?? "{}");
-  return body.matches ?? [];
+export async function rpcListMatches(session: Session, mode?: "classic" | "timed"): Promise<any[]> {
+  const res = await nakamaClient.rpcFunc(session, "list_matches", JSON.stringify(mode ? { mode } : {}));
+  return (JSON.parse(res.payload ?? "{}")).matches ?? [];
 }
 
 export async function rpcGetLeaderboard(session: Session): Promise<any[]> {
   const res = await nakamaClient.rpcFunc(session, "get_leaderboard", "{}");
-  const body = JSON.parse(res.payload ?? "{}");
-  return body.records ?? [];
+  return (JSON.parse(res.payload ?? "{}")).records ?? [];
 }
 
 export async function rpcGetMyStats(session: Session): Promise<any> {
   const res = await nakamaClient.rpcFunc(session, "get_my_stats", "{}");
-  const body = JSON.parse(res.payload ?? "{}");
-  return body.stats;
+  return (JSON.parse(res.payload ?? "{}")).stats;
 }

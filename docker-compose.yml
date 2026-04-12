@@ -42,7 +42,7 @@ services:
       - NAKAMA_CONSOLE_USERNAME=admin
       - NAKAMA_CONSOLE_PASSWORD=admin123
     healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:7350/"]
+      test: ["CMD", "curl", "-f", "http://localhost:7350/healthcheck"]
       interval: 10s
       timeout: 5s
       retries: 10
