@@ -61,21 +61,21 @@ export async function cancelMatchmaker(socket: Socket, ticket: string): Promise<
 }
 
 export async function rpcCreateMatch(session: Session, mode: "classic" | "timed"): Promise<string> {
-  const res = await nakamaClient.rpcFunc(session, "create_match", JSON.stringify({ mode }));
-  return (JSON.parse(res.payload ?? "{}")).matchId as string;
+  const res = await nakamaClient.rpc(session, "create_match", JSON.stringify({ mode }));
+  return (res.payload ?? {}).matchId as string;
 }
 
 export async function rpcListMatches(session: Session, mode?: "classic" | "timed"): Promise<any[]> {
-  const res = await nakamaClient.rpcFunc(session, "list_matches", JSON.stringify(mode ? { mode } : {}));
-  return (JSON.parse(res.payload ?? "{}")).matches ?? [];
+  const res = await nakamaClient.rpc(session, "list_matches", JSON.stringify(mode ? { mode } : {}));
+  return (res.payload ?? {}).matches ?? [];
 }
 
 export async function rpcGetLeaderboard(session: Session): Promise<any[]> {
-  const res = await nakamaClient.rpcFunc(session, "get_leaderboard", "{}");
-  return (JSON.parse(res.payload ?? "{}")).records ?? [];
+  const res = await nakamaClient.rpc(session, "get_leaderboard", "{}");
+  return (res.payload ?? {}).records ?? [];
 }
 
 export async function rpcGetMyStats(session: Session): Promise<any> {
-  const res = await nakamaClient.rpcFunc(session, "get_my_stats", "{}");
-  return (JSON.parse(res.payload ?? "{}")).stats;
+  const res = await nakamaClient.rpc(session, "get_my_stats", "{}");
+  return (res.payload ?? {}).stats;
 }

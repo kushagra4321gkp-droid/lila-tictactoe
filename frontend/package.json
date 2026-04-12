@@ -8,6 +8,7 @@
     "preview": "vite preview"
   },
   "dependencies": {
+    "@heroiclabs/nakama-js": "^2.8.0",
     "@heroiclabs/nakama-js-base": "github:heroiclabs/nakama-js",
     "react": "^18.2.0",
     "react-dom": "^18.2.0"

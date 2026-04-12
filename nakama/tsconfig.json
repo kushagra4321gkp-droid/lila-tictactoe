@@ -8,6 +8,7 @@
     "outDir": "./build",
     "noEmit": false,
     "skipLibCheck": true,
+    "typeRoots": ["node_modules/@heroiclabs/nakama-runtime"],
     "lib": ["ES2015", "ES2016", "ES2017", "ES2018"]
   },
   "include": ["src/**/*.ts"],
