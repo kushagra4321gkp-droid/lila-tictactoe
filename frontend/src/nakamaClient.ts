@@ -63,7 +63,7 @@ export async function cancelMatchmaker(socket: Socket, ticket: string): Promise<
 export async function rpcCreateMatch(session: Session, mode: "classic" | "timed"): Promise<string> {
   const res = await nakamaClient.rpc(session, "create_match", JSON.stringify({ mode }));
   const d1 = typeof res.payload === 'string' ? JSON.parse(res.payload) : (res.payload ?? {});
-  return d1.match_id as string;
+  return (typeof d1.match_id === "string") ? d1.match_id.replace(/\"/g, "") : d1.match_id;
 }
 
 export async function rpcListMatches(session: Session, mode?: "classic" | "timed"): Promise<any[]> {
