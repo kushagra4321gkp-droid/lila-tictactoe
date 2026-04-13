@@ -4,16 +4,17 @@ import { createSocket } from "../nakamaClient";
 import { OpCode, GameState, GameOverPayload, Mark } from "../types";
 
 interface Props {
-  session:  Session;
-  matchId:  string;
-  username: string;
-  onBack:   () => void;
-  onLeaderboard: () => void;
+  session:        Session;
+  matchId:        string;
+  username:       string;
+  existingSocket: Socket | null;
+  onBack:         () => void;
+  onLeaderboard:  () => void;
 }
 
 type Phase = "connecting" | "waiting" | "playing" | "over";
 
-export default function Game({ session, matchId, username, onBack, onLeaderboard }: Props) {
+export default function Game({ session, matchId, username, existingSocket, onBack, onLeaderboard }: Props) {
   const socketRef = useRef<Socket | null>(null);
 
   const [phase,       setPhase]       = useState<Phase>("connecting");
@@ -24,18 +25,21 @@ export default function Game({ session, matchId, username, onBack, onLeaderboard
 
   const myId = session.user_id!;
 
-  // ── Connect & join match ─────────────────────────────────────────────────────
   useEffect(() => {
     let mounted = true;
 
     const connect = async () => {
       try {
-        const socket = createSocket();
+        // ✅ Reuse the socket from matchmaking if available, else create new
+        let socket: Socket;
+        if (existingSocket) {
+          socket = existingSocket;
+        } else {
+          socket = createSocket();
+          await socket.connect(session, false);
+        }
         socketRef.current = socket;
 
-        await socket.connect(session, false);
-
-        // ── Message handler ──────────────────────────────────────────────────
         socket.onmatchdata = (data) => {
           if (!mounted) return;
           const payload = data.data
@@ -70,7 +74,7 @@ export default function Game({ session, matchId, username, onBack, onLeaderboard
           }
         };
 
-        socket.onmatchpresence = () => { /* presence handled server-side */ };
+        socket.onmatchpresence = () => {};
 
         socket.ondisconnect = () => {
           if (mounted) setError("Disconnected from server.");
@@ -91,13 +95,11 @@ export default function Game({ session, matchId, username, onBack, onLeaderboard
 
     return () => {
       mounted = false;
-      socketRef.current?.leaveMatch(matchId).catch(() => {});
-      socketRef.current?.disconnect(false);
+      // Don't disconnect here — App.tsx handleGameBack does cleanup
     };
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  // ── Make a move ──────────────────────────────────────────────────────────────
   const makeMove = useCallback((position: number) => {
     if (!socketRef.current || !gameState) return;
     if (gameState.currentTurn !== myId) return;
@@ -107,7 +109,6 @@ export default function Game({ session, matchId, username, onBack, onLeaderboard
     socketRef.current.sendMatchState(matchId, OpCode.MAKE_MOVE, payload);
   }, [gameState, matchId, myId]);
 
-  // ── Render helpers ────────────────────────────────────────────────────────────
   const myMark     = gameState?.marks?.[myId] as Mark | undefined;
   const theirId    = gameState
     ? Object.keys(gameState.marks).find(id => id !== myId)
@@ -126,19 +127,14 @@ export default function Game({ session, matchId, username, onBack, onLeaderboard
     ].filter(Boolean).join(" ");
 
     return (
-      <div
-        key={i}
-        className={classNames}
-        onClick={() => makeMove(i)}
-      >
+      <div key={i} className={classNames} onClick={() => makeMove(i)}>
         {cell || ""}
       </div>
     );
   }
 
-  const theirName = theirId ? (gameState?.marks ? `Opponent` : "?") : "Waiting…";
+  const theirName = theirId ? "Opponent" : "Waiting…";
 
-  // ── Winner display logic ─────────────────────────────────────────────────────
   function getOverTitle(): string {
     if (!overPayload) return "";
     if (overPayload.reason === "draw") return "It's a Draw!";
@@ -154,7 +150,6 @@ export default function Game({ session, matchId, username, onBack, onLeaderboard
     return "";
   }
 
-  // ── Connecting / error state ──────────────────────────────────────────────────
   if (phase === "connecting") {
     return (
       <div style={{ paddingTop: "3rem", textAlign: "center" }}>
@@ -177,7 +172,6 @@ export default function Game({ session, matchId, username, onBack, onLeaderboard
 
   return (
     <div style={{ paddingTop: "1.5rem" }}>
-      {/* Header */}
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "1.5rem" }}>
         <div className="logo">LILA</div>
         <button className="btn btn-outline" style={{ width: "auto", padding: "0.5rem 0.9rem" }} onClick={onBack}>
@@ -185,7 +179,6 @@ export default function Game({ session, matchId, username, onBack, onLeaderboard
         </button>
       </div>
 
-      {/* Waiting state */}
       {phase === "waiting" && (
         <div className="card" style={{ textAlign: "center" }}>
           <div className="spinner" />
@@ -197,10 +190,8 @@ export default function Game({ session, matchId, username, onBack, onLeaderboard
         </div>
       )}
 
-      {/* Game */}
       {(phase === "playing" || phase === "over") && gameState && (
         <>
-          {/* Player chips */}
           <div className="player-bar">
             <div className={`player-chip ${myMark} ${gameState.currentTurn === myId ? "active" : ""}`}>
               <div className="chip-mark">{myMark}</div>
@@ -215,26 +206,22 @@ export default function Game({ session, matchId, username, onBack, onLeaderboard
             </div>
           </div>
 
-          {/* Timer */}
           {timer !== null && (
             <div className={`timer ${timer <= 10 ? "urgent" : ""}`}>
               ⏱ {timer}s
             </div>
           )}
 
-          {/* Status */}
           {!gameState.gameOver && (
             <div className="status-banner">
               {myTurn ? "Your turn" : "Opponent's turn…"}
             </div>
           )}
 
-          {/* Board */}
           <div className="board">
             {gameState.board.map((cell, i) => renderCell(cell, i))}
           </div>
 
-          {/* Error toast */}
           {error && (
             <p style={{ color: "var(--danger)", textAlign: "center", fontSize: "0.875rem" }}>
               {error}
@@ -243,38 +230,25 @@ export default function Game({ session, matchId, username, onBack, onLeaderboard
         </>
       )}
 
-      {/* Game over overlay */}
       {phase === "over" && overPayload && (
         <div className="game-over-overlay">
           <div className="game-over-card">
             <div className="game-over-mark">
-              {overPayload.reason === "draw"
-                ? "🤝"
-                : overPayload.winner === myId
-                  ? "🏆"
-                  : "💀"}
+              {overPayload.reason === "draw" ? "🤝" : overPayload.winner === myId ? "🏆" : "💀"}
             </div>
-            <div
-              className="game-over-title"
-              style={{
-                color: overPayload.reason === "draw"
-                  ? "var(--text)"
-                  : overPayload.winner === myId
-                    ? "var(--accent)"
-                    : "var(--danger)",
-              }}
-            >
+            <div className="game-over-title" style={{
+              color: overPayload.reason === "draw"
+                ? "var(--text)"
+                : overPayload.winner === myId
+                  ? "var(--accent)"
+                  : "var(--danger)",
+            }}>
               {getOverTitle()}
             </div>
             <p className="game-over-sub">{getOverSub()}</p>
-
             <div style={{ display: "flex", flexDirection: "column", gap: "0.5rem" }}>
-              <button className="btn btn-primary" onClick={onBack}>
-                Play Again
-              </button>
-              <button className="btn btn-outline" onClick={onLeaderboard}>
-                🏆 Leaderboard
-              </button>
+              <button className="btn btn-primary" onClick={onBack}>Play Again</button>
+              <button className="btn btn-outline" onClick={onLeaderboard}>🏆 Leaderboard</button>
             </div>
           </div>
         </div>

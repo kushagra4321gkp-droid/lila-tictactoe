@@ -49,8 +49,7 @@ export default function App() {
         ticketRef.current = null;
         const mid = matched.match_id ?? (matched as any).matchId;
         if (mid) {
-          socket.disconnect(false);
-          socketRef.current = null;
+          // ✅ Do NOT disconnect — pass the live socket to Game
           setMatchId(mid);
           setFinding(false);
           setScreen("game");
@@ -83,6 +82,9 @@ export default function App() {
   };
 
   const handleGameBack = () => {
+    // Clean up socket when leaving game
+    socketRef.current?.disconnect(false);
+    socketRef.current = null;
     setMatchId(null);
     setScreen("lobby");
   };
@@ -113,6 +115,7 @@ export default function App() {
 
   if (screen === "game" && matchId) return (
     <Game session={session} matchId={matchId} username={username}
+      existingSocket={socketRef.current}
       onBack={handleGameBack} onLeaderboard={() => setScreen("leaderboard")} />
   );
 
