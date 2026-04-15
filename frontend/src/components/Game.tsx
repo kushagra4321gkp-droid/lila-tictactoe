@@ -101,6 +101,7 @@ export default function Game({ session, matchId, username, existingSocket, onBac
   }, []);
 
   const makeMove = useCallback((position: number) => {
+    console.log("MOVE", {position, hasSocket: !!socketRef.current, hasState: !!gameState, currentTurn: gameState?.currentTurn, myId, cell: gameState?.board[position]});
     if (!socketRef.current || !gameState) return;
     if (gameState.currentTurn !== myId) return;
     if (gameState.board[position] !== "") return;
