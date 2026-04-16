@@ -80,11 +80,9 @@ export default function Game({ session, matchId, username, existingSocket, onBac
           if (mounted) setError("Disconnected from server.");
         };
 
-        if (!existingSocket) {
-          for (let i = 0; i < 3; i++) {
-            try { await socket.joinMatch(matchId); break; }
-            catch (e) { if (i === 2) throw e; await new Promise(r => setTimeout(r, 1000)); }
-          }
+        for (let i = 0; i < 3; i++) {
+          try { await socket.joinMatch(matchId); break; }
+          catch (e) { if (i === 2) throw e; await new Promise(r => setTimeout(r, 1000)); }
         }
         if (mounted) setPhase("waiting");
 
